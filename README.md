@@ -1,5 +1,5 @@
-#pico-terminal-editor
-This program ("pico") is a very small terminal-based text editor.   
+#terminal-editor
+This program ("mice") is a very small terminal-based text editor.   
   
 I made it in a short amount of time as a fun project,  
 therefore it is not meant as a replacement for full-fledged text editors.  
