@@ -21,7 +21,9 @@ pub struct Display
 	input: FileData, //commandline buffer object
 	message_queue: VecDeque<String>, //list of messages to the user
 	yn_question: Option<YNQuestion>, //if not none -> question to the user
-	yn_question_state: bool //if yn_question is answered with yes or no, true -> yes
+	yn_question_state: bool, //if yn_question is answered with yes or no, true -> yes
+	//line_draw_log: Vec<(usize, usize)>, //an entry is created for every line, -> (line_wraps, length)
+	//draw_cursor_only: bool //is set by key handler if only the cursor should get updated (improve speed)
 }
 
 impl Display
@@ -41,7 +43,7 @@ impl Display
 			input: FileData::new(),
 			message_queue: VecDeque::new(),
 			yn_question: None,
-			yn_question_state: false
+			yn_question_state: false,
 		}
 	}
 
@@ -59,7 +61,7 @@ impl Display
 	{
 		self.width = self.rustbox.width();
 		self.height = self.rustbox.height();
-		self.draw();
+		self.draw_all();
 		loop
 		{
 			match self.rustbox.poll_event(true)
@@ -70,7 +72,7 @@ impl Display
 					{
 						Some(character) => {
 							self.key_event(key, character);
-							self.draw();
+							self.draw_all();
 						},
 						None => {}
 					};
@@ -82,7 +84,7 @@ impl Display
 				Ok(Event::ResizeEvent(width, height)) =>
 				{
 					self.resize_event(width as usize, height as usize);
-					self.draw();
+					self.draw_all();
 				},
 				Err(_) => {},
 				_ => {}
@@ -115,28 +117,6 @@ impl Display
 			return;
 		}
 
-		//ctrl keys
-		if key == 14 //^N
-		{
-			self.execute_internal(String::from("new"));
-		}
-		else if key == 15 //^O
-		{
-			self.preset_input(String::from("open "));
-		}
-		else if key == 19 //^S
-		{
-			self.execute_internal(String::from("save"));
-		}
-		else if key == 17 //^Q
-		{
-			self.execute_internal(String::from("quit"));
-		}
-		else if key == 23 //^W
-		{
-			self.preset_input(String::from("save "));
-		}
-
 		//vertical scrolling
 		if self.data.get_cursor_line() < self.line_scroll
 		{
@@ -145,6 +125,33 @@ impl Display
 		if self.data.get_cursor_line() >= self.line_scroll + self.height - 1
 		{
 			self.line_scroll += 1;
+		}
+
+		//ctrl keys
+		if key == 14 //^N
+		{
+			self.execute_internal(String::from("new"));
+			return;
+		}
+		else if key == 15 //^O
+		{
+			self.preset_input(String::from("open "));
+			return;
+		}
+		else if key == 19 //^S
+		{
+			self.execute_internal(String::from("save"));
+			return;
+		}
+		else if key == 17 //^Q
+		{
+			self.execute_internal(String::from("quit"));
+			return;
+		}
+		else if key == 23 //^W
+		{
+			self.preset_input(String::from("save "));
+			return;
 		}
 
 		//match pressed key
@@ -200,7 +207,7 @@ impl Display
 				mod_data.write_char(' '); //doesnt get recognized??
 			},
 			_ => {
-				if character.is_alphabetic() || character.len_utf8() == 1 //filter out ^.. chars and others
+				if character.is_alphabetic() || (character.len_utf8() == 1 && key > 31) //filter out ^.. chars and others
 				{
 					mod_data.write_char(character);
 				}
@@ -287,8 +294,8 @@ impl Display
 		}
 		self.yn_question = None;
 	}
-
-	fn draw(&mut self)
+	
+	fn draw_all(&mut self)
 	{
 		self.rustbox.clear();
 		self.draw_text();
@@ -444,7 +451,7 @@ impl Display
 		command = command.trim().to_owned();
 		self.input.clear();
 		self.input_active = false;
-		let mut split_iter = command.split(' ');
+		let mut split_iter = command.split_whitespace();
 		let op: String = match split_iter.next()
 		{
 			Some(v) => v.to_owned(),
@@ -565,7 +572,7 @@ impl Display
 			YNOption::NewIgnoreModified => format!("unsaved changes! continue?"),
 			YNOption::OpenIgnoreModified(_) => format!("unsaved changes! continue?"),
 			YNOption::SaveIgnoreExisting(_) => format!("file already exists! continue?"),
-			YNOption::QuitIgnoreModified => format!("unsaved changes! continue")
+			YNOption::QuitIgnoreModified => format!("unsaved changes! continue?")
 		};
 		self.yn_question = Some(YNQuestion::new(message, option));
 		self.yn_question_state = false;

@@ -3,8 +3,6 @@ extern crate rustbox;
 use std::env;
 use std::io::Result;
 use std::path::Path;
-use std::fs::File;
-use std::process;
 
 mod filedata;
 use filedata::FileData;
@@ -37,16 +35,12 @@ fn init_data() -> Result<FileData>
 		let path = Path::new(&path_str_copy);
 		if path.exists() == false
 		{
-		    match File::create(path)
-		    {
-		    	Ok(_) => {},
-		    	Err(e) => {
-		    		println!("could not create specified file: {}", e);
-		    		process::exit(-1);
-		    	}
-		    }	
+			Ok(FileData::new_with_name(path_str))
 		}
-		FileData::from(path_str)
+		else 
+		{
+			FileData::from(path_str)    
+		}
 	}
 	else
 	{

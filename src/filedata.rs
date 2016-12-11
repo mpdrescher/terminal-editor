@@ -29,6 +29,13 @@ impl FileData
 		}
 	}
 
+	pub fn new_with_name(path: String) -> FileData
+	{
+		let mut result = FileData::new();
+		result.path = Some(path);
+		result
+	}
+
 	//load data from path
 	pub fn from(filepath: String) -> Result<FileData>
 	{
