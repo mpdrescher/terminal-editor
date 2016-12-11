@@ -10,7 +10,7 @@ use std::time::SystemTime;
 
 pub const COLOR: Color = Color::Yellow;
 pub const TAB_SIZE: isize = 4;
-pub const FRAME_LIMIT: u32 = 20000000;
+pub const FRAME_LIMIT: u32 = 20000000;//20mil ca. 60 fps
 
 pub struct Display
 {
@@ -30,7 +30,8 @@ pub struct Display
 	draw_xoff: isize,
 	screen_cursor_char: isize,
 	last_draw: SystemTime,
-	skipped_frame: bool
+	skipped_draw: bool,
+	run_low: bool,
 }
 
 impl Display
@@ -56,7 +57,8 @@ impl Display
 			draw_xoff: 0,
 			screen_cursor_char: 0,
 			last_draw: SystemTime::now(),
-			skipped_frame: false
+			skipped_draw: false,
+			run_low: true
 		}
 	}
 
@@ -100,7 +102,12 @@ impl Display
 					self.draw_all();
 				},
 				Err(_) => {},
-				_ => {}
+				_ => {
+					if self.skipped_draw
+					{
+						self.redo_skipped_draw();
+					}
+				}
 			}
 		}
 	}
@@ -329,15 +336,36 @@ impl Display
 		self.yn_question = None;
 	}
 
+	fn redo_skipped_draw(&mut self)
+	{
+		match self.last_draw.elapsed()
+		{
+			Ok(v) => {
+				if v.subsec_nanos() < FRAME_LIMIT
+				{
+					self.skipped_draw = false;
+					self.draw_optimized();
+				}
+			},
+			Err(_) => {}
+		};
+	}
+
 	//check the time elapsed and limit redraws to 4 per second
 	fn draw_after_keypress(&mut self)
 	{
+		if self.run_low == false
+		{
+			self.draw_optimized();
+			return;
+		}
 		let mut draw = true;
 		match self.last_draw.elapsed()
 		{
 			Ok(v) => {
 				if v.subsec_nanos() < FRAME_LIMIT
 				{
+					self.skipped_draw = true;
 					draw = false;
 				}
 			},
@@ -347,6 +375,13 @@ impl Display
 		{
 			return;
 		}
+		self.last_draw = SystemTime::now();
+		self.draw_optimized();
+		
+	}
+
+	fn draw_optimized(&mut self)
+	{
 		self.draw_cursor();
 		self.check_scroll();
 		self.draw_title();
@@ -359,7 +394,6 @@ impl Display
 		{
 			self.draw_all();    
 		}
-		self.last_draw = SystemTime::now();
 	}
 
 	fn draw_all(&mut self)
