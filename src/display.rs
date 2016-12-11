@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 
 pub const COLOR: Color = Color::Yellow;
+pub const TAB_SIZE: isize = 4;
 
 pub struct Display
 {
@@ -17,13 +18,15 @@ pub struct Display
 	width: usize, //screen width
 	height: usize, //screen height
 	line_scroll: usize, //line number of the first display line
+	char_scroll: usize,
 	input_active: bool, //true -> write to commandline, false -> write to data buffer
 	input: FileData, //commandline buffer object
 	message_queue: VecDeque<String>, //list of messages to the user
 	yn_question: Option<YNQuestion>, //if not none -> question to the user
 	yn_question_state: bool, //if yn_question is answered with yes or no, true -> yes
-	//line_draw_log: Vec<(usize, usize)>, //an entry is created for every line, -> (line_wraps, length)
-	//draw_cursor_only: bool //is set by key handler if only the cursor should get updated (improve speed)
+	draw_cursor_only: bool, //don't update text buffer for speed
+	draw_xoff: isize,
+	screen_cursor_char: isize,
 }
 
 impl Display
@@ -39,11 +42,15 @@ impl Display
 			width: 0,
 			height: 0,
 			line_scroll: 0,
+			char_scroll: 0,
 			input_active: false,
 			input: FileData::new(),
 			message_queue: VecDeque::new(),
 			yn_question: None,
 			yn_question_state: false,
+			draw_cursor_only: false,
+			draw_xoff: 0,
+			screen_cursor_char: 0
 		}
 	}
 
@@ -72,7 +79,18 @@ impl Display
 					{
 						Some(character) => {
 							self.key_event(key, character);
-							self.draw_all();
+							self.draw_cursor();
+							self.check_scroll();
+							self.draw_title();
+							if self.draw_cursor_only
+							{
+								self.rustbox.present();
+								self.draw_cursor_only = false;
+							}
+							else 
+							{
+								self.draw_all();    
+							}
 						},
 						None => {}
 					};
@@ -99,6 +117,33 @@ impl Display
 		self.height = height;
 	}
 
+	fn check_scroll(&mut self)
+	{
+		while self.data.get_cursor_line() < self.line_scroll
+		{
+			self.line_scroll -= 1;
+			self.draw_cursor_only = false;
+		}
+		while self.data.get_cursor_line() >= self.line_scroll + self.height - 1
+		{
+			self.line_scroll += 1;
+			self.draw_cursor_only = false;
+		}
+		//horizontal scroll
+		if self.screen_cursor_char < 0
+		{
+		    self.char_scroll = 0;
+		    self.draw_cursor_only = false;
+		}
+		self.draw_cursor();//recalc in case of switching from higher scroll to lesser scroll != 0
+		if self.screen_cursor_char >= self.width as isize
+		{
+			let delta = self.screen_cursor_char - self.width as isize + 1;
+			self.char_scroll += delta as usize;
+			self.draw_cursor_only = false;
+		}
+	}
+
 	//handle incoming events
 	fn key_event(&mut self, key: u16, character: char)
 	{
@@ -115,16 +160,6 @@ impl Display
 		{
 			self.execute_input();
 			return;
-		}
-
-		//vertical scrolling
-		if self.data.get_cursor_line() < self.line_scroll
-		{
-			self.line_scroll -= 1;
-		}
-		if self.data.get_cursor_line() >= self.line_scroll + self.height - 1
-		{
-			self.line_scroll += 1;
 		}
 
 		//ctrl keys
@@ -167,19 +202,23 @@ impl Display
 				if !self.input_active
 				{
 					mod_data.move_cursor_up();
+					self.draw_cursor_only = true;
 				}
 			},
 			65515 => { //left
 				mod_data.move_cursor_left();
+				self.draw_cursor_only = true;
 			},
 			65516 => { //down
 				if !self.input_active
 				{
 					mod_data.move_cursor_down();
+					self.draw_cursor_only = true;
 				}
 			},
 			65514 => { //right
 				mod_data.move_cursor_right();
+				self.draw_cursor_only = true;
 			},
 			127 => { //bsp
 				mod_data.backspace();
@@ -207,7 +246,7 @@ impl Display
 				mod_data.write_char(' '); //doesnt get recognized??
 			},
 			_ => {
-				if character.is_alphabetic() || (character.len_utf8() == 1 && key > 31) //filter out ^.. chars and others
+				if character.is_control() == false
 				{
 					mod_data.write_char(character);
 				}
@@ -294,11 +333,12 @@ impl Display
 		}
 		self.yn_question = None;
 	}
-	
+
 	fn draw_all(&mut self)
 	{
 		self.rustbox.clear();
 		self.draw_text();
+		self.draw_cursor();
 		self.draw_title();
 		self.draw_question();
 		self.draw_message();
@@ -374,53 +414,76 @@ impl Display
 		self.rustbox.print(0, 0, rustbox::RB_NORMAL, Color::Black, COLOR, &pad_to(title, self.width));
 	}
 
+	fn draw_cursor(&mut self)
+	{
+		let cursor_line = self.data.get_cursor_line() as isize - self.line_scroll as isize + 1;
+		let mut cursor_char = self.data.get_cursor_char() as isize;
+		
+		//take into account that tabs use more space
+		let cur_line = match self.data.get_line(self.data.get_cursor_line())
+		{
+			None => {return;},
+			Some(v) => v
+		};
+		let mut char_counter = 0;
+		for ch in cur_line
+		{
+			if char_counter >= self.data.get_cursor_char()
+			{
+				break;
+			}
+			char_counter += 1;
+			if ch == &'\t'
+			{
+				cursor_char += TAB_SIZE - 1;
+			}
+		}
+		let draw_x = self.draw_xoff - self.char_scroll as isize + cursor_char;
+		if cursor_line > 0 && draw_x >= 0
+		{
+			self.rustbox.set_cursor(draw_x, cursor_line);
+			
+		}
+		self.screen_cursor_char = draw_x;
+	}
+
 	//draw the editor pane
 	//differentiates between the on-screen and in-data position of the cursor
 	//cur_line_data, cur_char_data -> data pointer position
 	//cur_line, cur_char -> display pointer position
 	fn draw_text(&mut self)
 	{
-		let line_no_len = self.data.get_line_number_len();
 		let mut cur_line = 1;
 		let mut cur_line_data = self.line_scroll;
-		while cur_line < self.height
+		'line: while cur_line < self.height
 		{
-			let mut cur_char = line_no_len+3;
-			let mut cur_char_data = 0;
 			let line_content = match self.data.get_line(cur_line_data)
 			{
-				None => {break;},
+				None => {break 'line;},
 				Some(v) => v
 			};
-			let mut line_str = pad_to(format!("{} ", cur_line_data+1), line_no_len+1);
-			line_str.push('|');
-			self.rustbox.print(0, cur_line, rustbox::RB_NORMAL, COLOR, Color::Default, &line_str);
-			for ch in line_content
+			let mut cur_char = self.draw_xoff - self.char_scroll as isize;
+			let mut cur_char_data = 0;
+			'char: while cur_char < self.width as isize
 			{
-				if cur_char_data == self.data.get_cursor_char() && cur_line_data == self.data.get_cursor_line()
+				let char_content = match line_content.get(cur_char_data)
 				{
-					self.rustbox.set_cursor(cur_char as isize, cur_line as isize);
-				}
-				if ch != &'\t'
+					None => {break 'char;},
+					Some(v) => v
+				};
+				if char_content != &'\t'
 				{
-					self.rustbox.print(cur_char, cur_line, rustbox::RB_NORMAL, Color::White, Color::Default, &format!("{}",ch));
+					if cur_char >= self.draw_xoff
+					{
+						self.rustbox.print(cur_char as usize, cur_line, rustbox::RB_NORMAL, Color::White, Color::Default, &format!("{}", char_content));
+					}
+					cur_char += 1;
 				}
-				else 
+				else
 				{
-				    cur_char += 3;
+					cur_char += TAB_SIZE;
 				}
-				cur_char += 1;
 				cur_char_data += 1;
-				if cur_char >= self.width //wrap lines if they reach the end of the line
-				{
-					cur_line += 1;
-					cur_char = line_no_len+7;
-					self.rustbox.print(line_no_len+3, cur_line, rustbox::RB_NORMAL, COLOR, Color::Default, &format!("-->"));
-				}
-			}
-			if cur_char_data == self.data.get_cursor_char() && cur_line_data == self.data.get_cursor_line()
-			{
-				self.rustbox.set_cursor(cur_char as isize, cur_line as isize);
 			}
 			cur_line += 1;
 			cur_line_data += 1;

@@ -125,10 +125,10 @@ impl FileData
 		self.content.len()
 	}
 
-	pub fn get_line_number_len(&self) -> usize
+	/*pub fn get_line_number_len(&self) -> usize
 	{
 		format!("{}", self.get_lines()).len()
-	}
+	}*/
 
 	pub fn is_modified(&self) -> bool
 	{
