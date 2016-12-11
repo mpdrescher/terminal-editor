@@ -6,9 +6,11 @@ use std::char;
 use filedata::FileData;
 use std::collections::VecDeque;
 use std::path::Path;
+use std::time::SystemTime;
 
 pub const COLOR: Color = Color::Yellow;
 pub const TAB_SIZE: isize = 4;
+pub const FRAME_LIMIT: u32 = 20000000;
 
 pub struct Display
 {
@@ -27,6 +29,8 @@ pub struct Display
 	draw_cursor_only: bool, //don't update text buffer for speed
 	draw_xoff: isize,
 	screen_cursor_char: isize,
+	last_draw: SystemTime,
+	skipped_frame: bool
 }
 
 impl Display
@@ -50,7 +54,9 @@ impl Display
 			yn_question_state: false,
 			draw_cursor_only: false,
 			draw_xoff: 0,
-			screen_cursor_char: 0
+			screen_cursor_char: 0,
+			last_draw: SystemTime::now(),
+			skipped_frame: false
 		}
 	}
 
@@ -79,18 +85,7 @@ impl Display
 					{
 						Some(character) => {
 							self.key_event(key, character);
-							self.draw_cursor();
-							self.check_scroll();
-							self.draw_title();
-							if self.draw_cursor_only
-							{
-								self.rustbox.present();
-								self.draw_cursor_only = false;
-							}
-							else 
-							{
-								self.draw_all();    
-							}
+							self.draw_after_keypress();
 						},
 						None => {}
 					};
@@ -332,6 +327,39 @@ impl Display
 			self.notify(notification);
 		}
 		self.yn_question = None;
+	}
+
+	//check the time elapsed and limit redraws to 4 per second
+	fn draw_after_keypress(&mut self)
+	{
+		let mut draw = true;
+		match self.last_draw.elapsed()
+		{
+			Ok(v) => {
+				if v.subsec_nanos() < FRAME_LIMIT
+				{
+					draw = false;
+				}
+			},
+			Err(_) => {}
+		};
+		if draw == false
+		{
+			return;
+		}
+		self.draw_cursor();
+		self.check_scroll();
+		self.draw_title();
+		if self.draw_cursor_only
+		{
+			self.rustbox.present();
+			self.draw_cursor_only = false;
+		}
+		else 
+		{
+			self.draw_all();    
+		}
+		self.last_draw = SystemTime::now();
 	}
 
 	fn draw_all(&mut self)
