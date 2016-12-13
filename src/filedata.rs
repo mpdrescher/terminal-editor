@@ -56,7 +56,10 @@ impl FileData
 			    charvec.push(ch);
 			}
 		}
-		linevec.push(charvec);
+		if charvec.len() != 0
+		{
+			linevec.push(charvec);
+		}
 		Ok(FileData
 		{
 			path: Some(filepath),
