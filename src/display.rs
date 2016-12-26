@@ -547,6 +547,7 @@ impl Display
 				}
 				cur_char_data += 1;
 			}
+			self.rustbox.print(cur_char as usize, cur_line, rustbox::RB_NORMAL, COLOR, Color::Default, "´");
 			cur_line += 1;
 			cur_line_data += 1;
 		}
