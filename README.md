@@ -1,14 +1,14 @@
-#terminal-editor
-This program ("mice") is a very small terminal-based text editor.   
+# terminal-editor
+This program ("mice", as in micro editor) is a very small terminal-based text editor.   
   
 I made it in a short amount of time as a fun project,  
 therefore it is not meant as a replacement for full-fledged text editors.  
 Only basic functionality (simple editing, saving, loading) is provided.    
 
-##Screenshot:
+## Screenshot:
 ![Screenshot](/screenshot.png?raw=true)
   
-##Usage:
+## Usage:
 Press Esc to switch between file and commandline  
   
 The following commands are available in the commandline as well as their shortcuts:  
@@ -17,7 +17,3 @@ The following commands are available in the commandline as well as their shortcu
 -open --file-- (CTRL+O)  
 -save (CTRL+S)  
 -save --file-- (CTRL+W)  
-  
- 
-  
-I may add search/search-replace and proper documentation in the future.  
